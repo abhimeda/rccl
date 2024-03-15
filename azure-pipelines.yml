@@ -11,7 +11,6 @@ pool: NV31
 steps:
 - script: |
     mkdir build
-    cd build
   displayName: 'Creating build directory and changing into it'
 
 - script: |
@@ -24,7 +23,7 @@ steps:
   displayName: "Building rccl with the install script"
 
 - script: |
-    cd release/test
+    cd build/release/test
     ls
     ./rccl-UnitTests
   displayName: "Running rccl unit tests"
