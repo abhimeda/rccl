@@ -15,7 +15,7 @@ steps:
   displayName: 'Creating build directory and changing into it'
 
 - script: |
-    echo "rocm" | sudo -S apt-get install libstdc++-12
+    echo "rocm" | sudo -S apt-get install libstdc++-12-dev
   displayName: 'Installing libstdc++-12 just in case'
 
 
