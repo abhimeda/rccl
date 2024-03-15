@@ -24,7 +24,7 @@ steps:
   displayName: "Building rccl with the install script"
 
 - script: |
-    cd /release/test
+    cd release/test
     ./rccl-UnitTests
   displayName: "Running rccl unit tests"
 
