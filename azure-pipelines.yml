@@ -25,6 +25,7 @@ steps:
 
 - script: |
     cd release/test
+    ls
     ./rccl-UnitTests
   displayName: "Running rccl unit tests"
 
