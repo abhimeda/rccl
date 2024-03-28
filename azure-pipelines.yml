@@ -1,0 +1,29 @@
+# Starter pipeline
+# Start with a minimal pipeline that you can customize to build and deploy your code.
+# Add steps that build, run tests, deploy, and more:
+# https://aka.ms/yaml
+
+trigger:
+- release/rocm-rel-6.0
+
+pool: NV31
+
+steps:
+- script: |
+    mkdir build
+  displayName: 'Creating build directory and changing into it'
+
+- script: |
+    echo "rocm" | sudo -S apt-get install libstdc++-12-dev
+  displayName: 'Installing libstdc++-12 just in case'
+
+
+- script: |
+     ./install.sh -d --local_gpu_only -t
+  displayName: "Building rccl with the install script"
+
+- script: |
+    cd build/release/test
+    ls
+    ./rccl-UnitTests
+  displayName: "Running rccl unit tests"
