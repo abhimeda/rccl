@@ -25,5 +25,11 @@ steps:
 - script: |
     cd build/release/test
     ls
-    ./rccl-UnitTests
+    ./rccl-UnitTests | tee output.xml
   displayName: "Running rccl unit tests"
+- task: PublishTestResults@2
+  inputs:
+    testResultsFormat: 'junit'
+    testResultsFiles: '**/output.xml' 
+  condition: succeededOrFailed()
+  displayName: 'HIP Catch Test Results'
