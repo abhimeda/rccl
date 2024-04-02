@@ -32,4 +32,4 @@ steps:
     testResultsFormat: 'junit'
     testResultsFiles: '**/build/release/test/output.xml' 
   condition: succeededOrFailed()
-  displayName: 'HIP Catch Test Results'
+  displayName: 'Test Results'
