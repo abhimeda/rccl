@@ -1,35 +1,79 @@
-# Starter pipeline
-# Start with a minimal pipeline that you can customize to build and deploy your code.
-# Add steps that build, run tests, deploy, and more:
-# https://aka.ms/yaml
+# # Starter pipeline
+# # Start with a minimal pipeline that you can customize to build and deploy your code.
+# # Add steps that build, run tests, deploy, and more:
+# # https://aka.ms/yaml
+
+# trigger:
+# - release/rocm-rel-6.0
+
+# pool: NV31
+
+# steps:
+# - script: |
+#     mkdir build
+#   displayName: 'Creating build directory and changing into it'
+
+# - script: |
+#     echo "rocm" | sudo -S apt-get install libstdc++-12-dev
+#   displayName: 'Installing libstdc++-12 just in case'
+
+
+# - script: |
+#      ./install.sh -d --local_gpu_only -t
+#   displayName: "Building rccl with the install script"
+
+# - script: |
+#     cd build/release/test
+#     ls
+#     ./rccl-UnitTests --gtest_output=xml:output.xml
+#   displayName: "Running rccl unit tests"
+# - task: PublishTestResults@2
+#   inputs:
+#     testResultsFormat: 'junit'
+#     testResultsFiles: '**/build/release/test/output.xml' 
+#   condition: succeededOrFailed()
+#   displayName: 'Test Results'
+resources:
+  repositories:
+  - repository: pipelines_repo
+    type: github
+    endpoint: github.com_amd-jmacaran
+    name: amd-jmacaran/pipelines
+  
+
+variables:
+- group: common
+- template: /.azuredevops/variables-global.yml@pipelines_repo
 
 trigger:
-- release/rocm-rel-6.0
+  batch: true
+  branches:
+    include:
+    - master
+  paths:
+    exclude:
+    - .github
+    - docs
+    - '**/README.md'
+    - '.*'
+    - LICENSE.txt
+    - README.md
 
-pool: NV31
+pr:
+  autoCancel: true
+  branches:
+    include:
+    - master
+  paths:
+    exclude:
+    - .github
+    - docs
+    - '**/README.md'
+    - '.*'
+    - LICENSE.txt
+    - README.md
+  drafts: false
 
-steps:
-- script: |
-    mkdir build
-  displayName: 'Creating build directory and changing into it'
-
-- script: |
-    echo "rocm" | sudo -S apt-get install libstdc++-12-dev
-  displayName: 'Installing libstdc++-12 just in case'
-
-
-- script: |
-     ./install.sh -d --local_gpu_only -t
-  displayName: "Building rccl with the install script"
-
-- script: |
-    cd build/release/test
-    ls
-    ./rccl-UnitTests --gtest_output=xml:output.xml
-  displayName: "Running rccl unit tests"
-- task: PublishTestResults@2
-  inputs:
-    testResultsFormat: 'junit'
-    testResultsFiles: '**/build/release/test/output.xml' 
-  condition: succeededOrFailed()
-  displayName: 'Test Results'
+jobs:
+  - template: ${{ variables.CI_COMPONENT_PATH }}/rccl.yml@pipelines_repo
+  
