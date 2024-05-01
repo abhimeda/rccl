@@ -76,14 +76,14 @@ find_package(ROCM 0.7.3 QUIET CONFIG PATHS /opt/rocm)
 if(NOT ROCM_FOUND)
     set(rocm_cmake_tag "master" CACHE STRING "rocm-cmake tag to download")
     file(
-        DOWNLOAD https://github.com/RadeonOpenCompute/rocm-cmake/archive/${rocm_cmake_tag}.zip
+        DOWNLOAD https://github.com/ROCm/rocm-cmake/archive/${rocm_cmake_tag}.zip
         ${PROJECT_EXTERN_DIR}/rocm-cmake-${rocm_cmake_tag}.zip
         STATUS rocm_cmake_download_status LOG rocm_cmake_download_log
     )
     list(GET rocm_cmake_download_status 0 rocm_cmake_download_error_code)
     if(rocm_cmake_download_error_code)
         message(FATAL_ERROR "Error: downloading "
-            "https://github.com/RadeonOpenCompute/rocm-cmake/archive/${rocm_cmake_tag}.zip failed "
+            "https://github.com/ROCm/rocm-cmake/archive/${rocm_cmake_tag}.zip failed "
             "error_code: ${rocm_cmake_download_error_code} "
             "log: ${rocm_cmake_download_log} "
         )
@@ -131,6 +131,27 @@ function(rocm_local_targets VARIABLE)
       endif()
     endif()
   endif()
+endfunction()
+
+# Iterate over the "source" list and check if there is a duplicate file name
+# NOTE: This is due to compiler bug '--save-temps' and can be removed when fix availabe
+function(add_file_unique FILE_LIST FILE)
+  get_filename_component(FILE_NAME "${FILE}" NAME)
+
+  # Iterate over whatever is in the list so far
+  foreach(curr_file IN LISTS ${FILE_LIST})
+    get_filename_component(curr_file_name ${curr_file} NAME)
+
+    # Check if duplicate
+    if(${FILE_NAME} STREQUAL ${curr_file_name})
+      get_filename_component(DIR_PATH "${FILE}" DIRECTORY)
+      get_filename_component(FILE_NAME_WE "${FILE}" NAME_WE)
+      get_filename_component(FILE_EXT "${FILE}" EXT)
+
+      # Construct a new file name by adding _tmp
+      set(HIP_FILE "${DIR_PATH}/${FILE_NAME_WE}_tmp${FILE_EXT}" PARENT_SCOPE)
+    endif()
+  endforeach()
 endfunction()
 
 include(ROCMSetupVersion)

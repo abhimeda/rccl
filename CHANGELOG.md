@@ -2,15 +2,59 @@
 
 Full documentation for RCCL is available at [https://rccl.readthedocs.io](https://rccl.readthedocs.io)
 
-## Unreleased
+## Unreleased - RCCL 2.20.5 for ROCm 6.2.0
+### Changed
+- Compatibility with NCCL 2.20.5
+- Compatibility with NCCL 2.19.4
+- Performance tuning for some collective operations on MI300
+- Enabled NVTX code in RCCL
+- Replaced rccl_bfloat16 with hip_bfloat16
+- NPKit updates:
+  - Removed warm-up iteration removal by default, need to opt in now
+  - Doubled the size of buffers to accommodate for more channels
+- Modified rings to be rail-optimized topology friendly
+- Replaced ROCmSoftwarePlatform links with ROCm links
+### Added
+- Support for fp8 and rccl_bfloat8
+- Support for using HIP contiguous memory
+- Implemented ROC-TX for host-side profiling
+- Enabled static build
+- Added new rome model
+- Added fp16 and fp8 cases to unit tests
+- New unit test for main kernel stack size
+- New -n option for topo_expl to override # of nodes
+- Improved debug messages of memory allocations
+### Fixed
+- Bug when configuring RCCL for only LL128 protocol
+- Scratch memory allocation after API change for MSCCL
+
+## RCCL 2.18.6 for ROCm 6.1.0
+### Changed
+- Compatibility with NCCL 2.18.6
+
+## RCCL 2.18.3 for ROCm 6.0.0
+### Changed
+- Compatibility with NCCL 2.18.3
+
+## RCCL 2.17.1-1 for ROCm 5.7.0
+### Changed
+- Compatibility with NCCL 2.17.1-1
+- Performance tuning for some collective operations
+### Added
+- Minor improvements to MSCCL codepath
+- NCCL_NCHANNELS_PER_PEER support
+- Improved compilation performance
+- Support for gfx94x
+### Fixed
+- Potential race-condition during ncclSocketClose()
+
+## RCCL 2.16.2 for ROCm 5.6.0
 ### Changed
 - Compatibility with NCCL 2.16.2
-### Added
 ### Fixed
 - Remove workaround and use indirect function call
-### Removed
 
-## Unreleased - RCCL 2.15.5 for ROCm 5.5.0
+## RCCL 2.15.5 for ROCm 5.5.0
 ### Changed
 - Compatibility with NCCL 2.15.5
 - Unit test executable renamed to rccl-UnitTests
@@ -24,7 +68,7 @@ Full documentation for RCCL is available at [https://rccl.readthedocs.io](https:
 - Support for HIP_VISIBLE_DEVICES for unit tests
 - Support for p2p transfers to non (HIP) visible devices
 ### Removed
-- Removed TransferBench from tools.  Exists in standalone repo: https://github.com/ROCmSoftwarePlatform/TransferBench
+- Removed TransferBench from tools.  Exists in standalone repo: https://github.com/ROCm/TransferBench
 
 ## RCCL-2.13.4 for ROCm 5.4.0
 ### Changed

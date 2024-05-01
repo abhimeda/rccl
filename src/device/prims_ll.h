@@ -10,18 +10,6 @@
 #include "npkit/npkit.h"
 #endif
 
-#ifdef __GFX11__
-#define LL_STORE(SRC, DST) \
-  __atomic_store_n((DST), (SRC), __ATOMIC_RELAXED)
-#define LL_LOAD(SRC) \
-  __atomic_load_n(SRC, __ATOMIC_RELAXED)
-#else
-#define LL_STORE(SRC, DST) \
-  __builtin_nontemporal_store((SRC), (DST))
-#define LL_LOAD(SRC) \
-  __builtin_nontemporal_load(SRC)
-#endif
-
 template<typename T, typename RedOp, typename Fan, int Direct, int P2p>
 class Primitives<T, RedOp, Fan, Direct, ProtoLL, P2p>:
   public PrimitivesWithoutDirect<Primitives<T, RedOp, Fan, Direct, ProtoLL, P2p>> {
@@ -44,7 +32,7 @@ class Primitives<T, RedOp, Fan, Direct, ProtoLL, P2p>:
   uint64_t recvConnHead;
 
   struct ncclConnInfo* sendConn = NULL;
-  volatile int* sendConnFifoPtr = NULL;
+  volatile struct ncclConnFifo* sendConnFifo = NULL;
   volatile uint64_t* sendConnHeadPtr = NULL;
   uint64_t sendConnHead;
   uint64_t sendConnHeadCache; // Cache last seen value
@@ -81,7 +69,7 @@ private:
   uint64_t* barrier_next;
 
   inline __device__ void barrier() {
-#if defined(__HIP_PLATFORM_HCC__) || defined(__HCC__) || defined(__HIPCC__)
+#if defined(__HIP_PLATFORM_AMD__) || defined(__HCC__) || defined(__HIPCC__)
     if (nthreads != WARP_SIZE)
       barrier_by_group();
 #else
@@ -114,10 +102,9 @@ private:
         sendConnHeadCache = atomicAdd((unsigned long long *)sendConnHeadPtr, 0);
         if (checkAbort(spins, 1)) break;
       }
-      __asm__ __volatile__("s_wakeup");
-      if (sendConnFifoPtr) {
+      if (sendConnFifo) {
         int size = ((sendConnHead & NCCL_LL_CLEAN_MASK) == NCCL_LL_CLEAN_MASK) ? stepLines*sizeof(union ncclLLFifoLine) : nbytes;
-        __atomic_store_n(sendConnFifoPtr+sendConnHead%NCCL_STEPS, (size), __ATOMIC_RELAXED);
+        sendConnFifo[sendConnHead%NCCL_STEPS].size = size;
       }
       sendConnHead += 1;
     }
@@ -160,11 +147,16 @@ private:
     }
 #endif
 
-#if defined(__HIP_PLATFORM_HCC__) || defined(__HCC__) || defined(__HIPCC__)
+#if defined(__HIP_PLATFORM_AMD__) || defined(__HCC__) || defined(__HIPCC__)
     union ncclLLFifoLine i4;
     do {
-      i4.v[0] = LL_LOAD(src->v);
-      i4.v[1] = LL_LOAD(src->v+1);
+#ifdef __GFX11__
+      asm volatile ("global_load_b128 %0, %1, off glc slc dlc\n"
+        "s_waitcnt vmcnt(0)\n" : "=v"(i4.i4) : "v"(&src->i4));
+#else
+      i4.v[0] = __builtin_nontemporal_load(src->v);
+      i4.v[1] = __builtin_nontemporal_load(src->v+1);
+#endif
 #if defined(ENABLE_NPKIT) && (defined(ENABLE_NPKIT_EVENT_PRIM_LL_DATA_PROCESS_ENTRY) && defined(ENABLE_NPKIT_EVENT_PRIM_LL_DATA_PROCESS_EXIT) || defined(ENABLE_NPKIT_PRIM_COLLECT_DATA_PROCESS_TIME))
       npkitWaitRecvSpins++;
 #endif
@@ -198,9 +190,14 @@ private:
     for (int i=BeginIx; i < MaxRecv; i++) {
       if (i < fan.nrecv()) {
         union ncclLLFifoLine* src = recvPtr(i) + offset;
-#if defined(__HIP_PLATFORM_HCC__) || defined(__HCC__) || defined(__HIPCC__)
-        line[i].v[0] = LL_LOAD(src->v);
-        line[i].v[1] = LL_LOAD(src->v+1);
+#if defined(__HIP_PLATFORM_AMD__) || defined(__HCC__) || defined(__HIPCC__)
+#ifdef __GFX11__
+        asm volatile ("global_load_b128 %0, %1, off glc slc dlc\n"
+          "s_waitcnt vmcnt(0)\n" : "=v"(line[i].i4) : "v"(&src->i4));
+#else
+        line[i].v[0] = __builtin_nontemporal_load(src->v);
+        line[i].v[1] = __builtin_nontemporal_load(src->v+1);
+#endif
 #else
         asm("ld.volatile.global.v4.u32 {%0,%1,%2,%3}, [%4];" : "=r"(line[i].data1), "=r"(line[i].flag1), "=r"(line[i].data2), "=r"(line[i].flag2) : "l"(&src->i4));
 #endif
@@ -220,9 +217,14 @@ private:
 #endif
 
     do {
-#if defined(__HIP_PLATFORM_HCC__) || defined(__HCC__) || defined(__HIPCC__)
-      line[i].v[0] = LL_LOAD(src->v);
-      line[i].v[1] = LL_LOAD(src->v+1);
+#if defined(__HIP_PLATFORM_AMD__) || defined(__HCC__) || defined(__HIPCC__)
+#ifdef __GFX11__
+      asm volatile ("global_load_b128 %0, %1, off glc slc dlc\n"
+        "s_waitcnt vmcnt(0)\n" : "=v"(line[i].i4) : "v"(&src->i4));
+#else
+      line[i].v[0] = __builtin_nontemporal_load(src->v);
+      line[i].v[1] = __builtin_nontemporal_load(src->v+1);
+#endif
 #else
       asm("ld.volatile.global.v4.u32 {%0,%1,%2,%3}, [%4];" : "=r"(line[i].data1), "=r"(line[i].flag1), "=r"(line[i].data2), "=r"(line[i].flag2) : "l"(&src->i4));
 #endif
@@ -244,14 +246,14 @@ private:
   }
 
   __device__ void storeLL(union ncclLLFifoLine* dst, uint64_t val, uint32_t flag) {
-#if defined(__HIP_PLATFORM_HCC__) || defined(__HCC__) || defined(__HIPCC__)
+#if defined(__HIP_PLATFORM_AMD__) || defined(__HCC__) || defined(__HIPCC__)
     union ncclLLFifoLine i4;
     i4.data1 = val & 0xffffffff;
     i4.flag1 = flag;
     i4.data2 = (val >> 32);
     i4.flag2 = flag;
-    LL_STORE(i4.v[0], dst->v);
-    LL_STORE(i4.v[1], dst->v+1);
+    __builtin_nontemporal_store(i4.v[0], dst->v);
+    __builtin_nontemporal_store(i4.v[1], dst->v+1);
 #else
     asm volatile("st.volatile.global.v4.u32 [%0], {%1,%2,%3,%4};" :: "l"(&dst->i4), "r"((uint32_t)val), "r"(flag), "r"((uint32_t)(val >> 32)), "r"(flag));
 #endif
@@ -268,15 +270,31 @@ private:
       uint32_t u4;
       uint64_t u8;
     };
-#if defined(__HIP_PLATFORM_HCC__) || defined(__HCC__) || defined(__HIPCC__)
+#if defined(__HIP_PLATFORM_AMD__) || defined(__HCC__) || defined(__HIPCC__)
     if(sizeof(U) == 1)
-      u1 = LL_LOAD((uint8_t*)src);
+#ifdef __GFX11__
+      u1 = __atomic_load_n((uint8_t*)src, __ATOMIC_RELAXED);
+#else
+      u1 = __builtin_nontemporal_load((uint8_t*)src);
+#endif
     else if(sizeof(U) == 2)
-      u2 = LL_LOAD((uint16_t*)src);
+#ifdef __GFX11__
+      u2 = __atomic_load_n((uint16_t*)src, __ATOMIC_RELAXED);
+#else
+      u2 = __builtin_nontemporal_load((uint16_t*)src);
+#endif
     else if(sizeof(U) == 4)
-      u4 = LL_LOAD((uint32_t*)src);
+#ifdef __GFX11__
+      u4 = __atomic_load_n((uint32_t*)src, __ATOMIC_RELAXED);
+#else
+      u4 = __builtin_nontemporal_load((uint32_t*)src);
+#endif
     else
-      u8 = LL_LOAD((uint64_t*)src);
+#ifdef __GFX11__
+      u8 = __atomic_load_n((uint64_t*)src, __ATOMIC_RELAXED);
+#else
+      u8 = __builtin_nontemporal_load((uint64_t*)src);
+#endif
 #else
     if(sizeof(U) == 1)
       asm("ld.volatile.global.b8 %0,[%1];" : "=r"(u4) : "l"(src));
@@ -300,15 +318,15 @@ private:
       uint64_t u8;
     };
     elt = val;
-#if defined(__HIP_PLATFORM_HCC__) || defined(__HCC__) || defined(__HIPCC__)
+#if defined(__HIP_PLATFORM_AMD__) || defined(__HCC__) || defined(__HIPCC__)
     if(sizeof(U) == 1)
-      LL_STORE(u1, (uint8_t*)dst);
+      __builtin_nontemporal_store(u1, (uint8_t*)dst);
     else if(sizeof(U) == 2)
-      LL_STORE(u2, (uint16_t*)dst);
+      __builtin_nontemporal_store(u2, (uint16_t*)dst);
     else if(sizeof(U) == 4)
-      LL_STORE(u4, (uint32_t*)dst);
+      __builtin_nontemporal_store(u4, (uint32_t*)dst);
     else
-      LL_STORE(u8, (uint64_t*)dst);
+      __builtin_nontemporal_store(u8, (uint64_t*)dst);
 #else
     if(sizeof(U) == 1)
       asm("st.volatile.global.b8 [%0],%1;" :: "l"(dst), "r"(u4));
@@ -586,7 +604,7 @@ private:
       sendConnHeadPtr = sendConn->head;
       sendConnHeadCache = *sendConnHeadPtr;
       sendConnHead = sendConn->step;
-      sendConnFifoPtr = sendConn->sizesFifo;
+      sendConnFifo = sendConn->connFifo;
     }
   }
 
@@ -594,7 +612,7 @@ private:
   __device__  Primitives(
       const int tid, const int nthreads, int const *recvPeers, int const *sendPeers,
       void const *inputBuf, void *outputBuf, uint64_t redOpArg, uint8_t group=0,
-      uint8_t connIndexRecv=0, uint8_t connIndexSend=0, struct ncclWorkElem* e = nullptr, int stepSize_=0
+      uint8_t connIndexRecv=0, uint8_t connIndexSend=0, struct ncclWorkElem* e = nullptr, struct ncclWorkElemP2p* p2p = nullptr, int stepSize_=0
     ):
     redOp(redOpArg),
     tid(tid), nthreads(nthreads), wid(tid%WARP_SIZE), group(group),
